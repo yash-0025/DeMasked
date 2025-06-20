@@ -247,6 +247,37 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         emit MessageSent(sender, _receiver, _content);
     }
 
+    function removeFriend(address _friend) external nonReentrant {
+        address sender =_msgSender();
+        require(users[sender].isRegistered, "User not registered");
+        require(isFriend[sender][_friend], "Not Friends");
+        require(dmtToken.balanceOf(sender) >= GAS_FEE, "Insufficient DeMasked tokens for GAs fees");
+
+        dmtToken.transferFrom(sender, owner(), GAS_FEE);
+        isFriend[sender][_friend] = false;
+        isFriend[_friend][sender] = false;
+
+        address[] storage senderFriends = users[sender].friends;
+        for(uint256 i=0; i<senderFriends; i++) {
+            if(senderFriends[i] == _friend){
+                senderFriends[i] = senderFriends[senderFriends.length - 1];
+                senderFriends.pop();
+                break;
+            }
+        }
+
+        address[] storage friendFriends = users[_friend].friends;
+        for(uint256 i=0; i<friendFriends.length; i++) {
+            if(friendFriends[i] == sender) {
+                friendFriends[i] = friendFriends[friendFriends.length - 1];
+                friendFriends.pop();
+                break;
+            }
+        }
+
+        emit FriendRemoved(sender, _friend);
+    }
+
     /* 
     digest :: EIP712 hashed message 
     signature :: user's cryptographic signature (65-byte bytes)
