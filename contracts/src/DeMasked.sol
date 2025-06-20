@@ -278,6 +278,31 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         emit FriendRemoved(sender, _friend);
     }
 
+    function searchUsers(string memory _query) external view returns (address[] memory) {
+        address[] memory matches = new address[](registeredUsers.length);
+        uint256 count = 0;
+        address addr;
+        try this.parseAddress(_query) returns (address parseAddr) {
+            addr = pasrseAddr;
+            if(users[addr].isRegistered) {
+                matches[count] = addr;
+                count++
+            }
+        } catch {
+            for(uint256 i=0; i<registeredUsers.length; i++) {
+                if(keccak256(abi.encodePacked(users[registeredUsers[i]].username)) == keccak256(abi.encodePacked(_query))) {
+                    matches[count] = registeredUsers[i];
+                    count++
+                }
+            }
+        }
+        address[] memory result = new address[](count);
+        for(uint256 i=0; i<count; i++) {
+            result[i] = matches[i];
+        }
+        return result;
+    }
+
     /* 
     digest :: EIP712 hashed message 
     signature :: user's cryptographic signature (65-byte bytes)
