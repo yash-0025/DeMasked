@@ -220,6 +220,33 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     }
 
 
+    function sendMessage(address _receiver, string memory _content, bytes memory _signature) external nonReentrant {
+        address sender = _msgSender();
+        require(users[sender].isRegistered, "User not registered");
+        require(users[_receiver].isRegistered, "Friend not registered");
+        require(isFriend[sender][_receiver], "Not Friends");
+        require(dmtToken.balanceOf(sender) >= (MESSAGE_COST + GAS_FEE), "Insufficient DeMasked Token");
+        require(bytes(_content).length > 0, "Message cannot be empty");
+
+        bytes32 digest = keccak256(abi.encodePacked(
+            "\x19\x01",
+            DOMAIN_SEPARATOR,
+            keccak256(abi.encode(MESSAGE_TYPEHASH, _receiver, keccak256(bytes(_content))))
+        ));
+        require(_verifySignature(digest, _signature, sender), "Invalid signature");
+
+        dmtToken.transferFrom(sender, address(this), MESSAGE_COST);
+        dmtToken.transferFrom(sender, owner(), GAS_FEE);
+        messages[sender][_receiver].push(Message({
+            sender: sender,
+            receiver: _receiver,
+            content: _content,
+            timestamp: block.timestamp
+        }));
+
+        emit MessageSent(sender, _receiver, _content);
+    }
+
     /* 
     digest :: EIP712 hashed message 
     signature :: user's cryptographic signature (65-byte bytes)
