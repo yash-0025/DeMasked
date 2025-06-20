@@ -191,6 +191,34 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         
     }
 
+    function createPost(string memory _content, string memory _imageCID, bytes memory _signature) external nonReentrant {
+        address sender = _msgSender();
+        require(users[sender].isRegistered, "User not registered");
+        require(dmtToken.balanceOf(sender) >= (POST_COST + GAS_FEE), "Insufficient DeMasked Tokens");
+        require(bytes(_content).length > 0 || bytes(_imageCID).length > 0, "Nothing to post , Image or any text content is required");
+
+        bytes32 digest = keccak256(abi.encodePacked(
+            "\x19\x01",
+            DOMAIN_SEPARATOR,
+            keccak256(abi.encode(POST_TYPEHASH,keccak256(bytes(_content)),
+        keccak256(bytes(_imageCID))))
+        ));
+
+        require(_verifySignature(digest, _signature, sender), "Invalid signature");
+
+        dmtToken.transferFrom(sender, address(this), POST_COST);
+        dmtToken.trasferFrom(sender, owner(), GAS_FEE);
+        postCounter++;
+        posts[postCounter] = Post({
+            author:sender,
+            content: _content,
+            imageCID:_imageCID,
+            timestamp: block.timestamp
+        });
+        users[sender].postCount++;
+        emit PostCreated(sender, postCounter, _content, _imageCID);
+    }
+
 
     /* 
     digest :: EIP712 hashed message 
