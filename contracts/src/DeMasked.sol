@@ -90,7 +90,19 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     event FriendRemoved(address indexed user, address indexed friend);
     event MessageSent(address indexed sender, address indexed receiver, string content);
 
-
+    function initialize(address _dmtToken, address _forwarder, address initialOwner) public initializer {
+        __Ownable_init(initialOwner);
+        __ReentrancyGuard_init();
+        __ERC2771Context_init_(_forwarder);
+        dmtToken = DeMaskedToken(_dmtToken);
+        DOMAIN_SEPARATOR = keccak256(abi.encode(
+            EIP712_DOMAIN_TYPEHASH,
+            keccak256(bytes("DeMasked")),
+            keccak256(bytes("1")),
+            block.chainid,
+            address(this)
+        ));
+    }
 
 
 
