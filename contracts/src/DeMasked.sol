@@ -161,6 +161,33 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         users[_friend].pendingFriendRequests.push(sender);
 
         emit FriendRequestSent(sender, _friend);
+    }
+
+
+    function acceptFriendRequest(address _sender) external nonReentrant {
+        address receiver =_msgSender();
+        require(users[receiver].isRegistered, "User not Registered");
+        require(hasPendingRequest[_sender][receiver], "No Pending Request");
+        require(!isFriend[receiver][_sender], "Already Friends");
+        require(dmtToken.balanceOf(receiver) >= GAS_FEE, "Insufficient DeMasked Token for gas fees");
+
+        dmtToken.transferFrom(receiver, owner(), GAS_FEE);
+        isFriend[receiver][_sender] = true;
+        isFriend[_sender][receiver] = true;
+        hasPendingRequest[_sender][receiver] = false;
+
+        address[] storage requests = users[receiver].pendingFriendRequests;
+        for(uint256 i=0; i<requests.length; i++) {
+            if(requests[i] == sender) {
+                requests[i] = requests[requests.length - 1];
+                requests.pop();
+                break;
+            }
+        }
+        users[receiver].friends.push(_sender);
+        users[_sender].friends.push(receiver);
+
+        emit FriendRequestAccepted(_sender, receiver);
         
     }
 
