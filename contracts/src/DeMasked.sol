@@ -105,5 +105,33 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     }
 
 
+    function register(string memory _username, bytes memory _signature ) external nonReentrant {
+        address sender = _msgSender();
+        require(!users[sender].isRegistered, "User Already Registered");
+        require(bytes(_username).length > 0, "Username cannot be empty");
+        require(usernameToAddress[_username] == address(0), "Username already taken");
+        require(dmtToken.balanceOf(sender) >= GAS_FEE, "Insufficient DMT for gas fees");
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01",
+        DOMAIN_SEPARATOR,
+        keccak256(abi.encode(REGISTER_TYPEHASH, keccak256(bytes(_username))))
+    ));
+
+    require(_verifySignature(digest, _signature, sender), "Invalid signature");
+    dmtToken.transferFrom(sender, owner(), GAS_FEE);
+
+    users[sender] = User({
+        username: _username,
+        isRegistered: true,
+        friends: new address[](0),
+        postCount: 0,
+        pendingFriendRequests: new address[](0)
+    });
+    usernameToAddress[_username] = sender;
+    registeredUsers.push(sender);
+
+    emit UserRegistered(sender, _username);
+    }
+
 
 }
