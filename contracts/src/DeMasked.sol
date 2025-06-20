@@ -61,6 +61,13 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
      2. The contract later verifies the signed messages to execute actions 
      3. It ensures a signature meant for one contract/chain can't be reused again.
 
+     Digest
+     It is the final hash that represent a signed message in a standardized format it is what users actually sign offchain and that;s what contract verify on-chain
+     EIP712 Preamble :: 
+     \x19 = Byte prefix indicating an intended validator which prevents misuse of signature
+    \x01 = Version byte for EIP-712 structured data
+    It ensures signature cannot be confused with raw Ethereum transaction or other signing schemes
+
     Working 
     1. TypesHashes is defined as compile-time constants to save gas and also they define the structure of signed data.
     2. DOMAIN_SEPARATOR compute which identifies the contract and the chain and prevents a signature of one contract from ethereum to being used on another contract on polygon.
@@ -105,6 +112,7 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     }
 
 
+
     function register(string memory _username, bytes memory _signature ) external nonReentrant {
         address sender = _msgSender();
         require(!users[sender].isRegistered, "User Already Registered");
@@ -133,5 +141,49 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     emit UserRegistered(sender, _username);
     }
 
+
+    function sendFriendRequest(address _friend, bytes memory _signature) external nonReentrant {
+        address sender = _msgSender();
+        require(users[sender].isRegistered, "User not registered");
+        require(users[_friend].isRegistered, "Friend is not registered");
+        require(_friend != sender, "Cannot send friend request to self");
+        require(!isFriend[sender][_friend], "You both are already Friends");
+        require(!hasPendingRequest[sender][_friend], "Request Already sent");
+        require(dmtToken.balanceOf(sender) >= (FRIEND_REQUEST_COST + GAS_FEE), "Insufficient DeMasked Token");
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR,keccak256(abi.encode(FRIEND_REQUEST_TYPEHASH, _friend))));
+
+        require(_verifySignature(digest, _signature, sender), "Invalid Signature");
+
+        dmtToken.transferFrom(sender, address(this), FRIEND_REQUEST_COST);
+        dmtToken.transferFrom(sender, owner(), GAS_FEE);
+        hasPendingRequest[sender][_friend] = true;
+        users[_friend].pendingFriendRequests.push(sender);
+
+        emit FriendRequestSent(sender, _friend);
+        
+    }
+
+
+    /* 
+    digest :: EIP712 hashed message 
+    signature :: user's cryptographic signature (65-byte bytes)
+    signer :: Address that supposedly created the sginature
+    Returns true if signature is valid otherwise false
+
+    Working
+    Ethereum signature is 65 bytes long and structured as r,s,v
+    r :: (32 bytes) - First part of the ECDSA signature
+    s :: (32 bytes) - Second part of the ECDSA signature
+    v :: (1 bytes) - Recovery identifier 
+
+    ecrecover function is a precompiled contract in Ethereum that 
+    takes digest and v,r,s and returns the ethereum address that signed the message
+    */
+
+    function _verifySignature(bytes32 digest, bytes memory signature, address signer) private pure returns (bool) {
+        address recovered = ecrecover(digest, uint8(signature[64]), bytes32(signature[0:32]), bytes32(signature[32:64]));
+        return recovered == signer;
+    }
 
 }

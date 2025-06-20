@@ -7,7 +7,7 @@ pragma solidity ^0.8.20;
 Components
 
 1. User sign the transaction but didn't pay any gas
-2. Relayer :: It is also known as Forwarder . It pays gas fees and sbumits the transaction to the blockchain.
+2. Relayer :: It is alwarder . It pays gas fees and sbumits the transaction to the blockchain.so known as For
 3. Recipient Contract :: The smart contract that processes the transaction
 */
 
