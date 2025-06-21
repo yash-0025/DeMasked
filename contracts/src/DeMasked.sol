@@ -2,14 +2,16 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@opezeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
 import "./DeMaskedToken.sol";
 
-contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable,  ERC2771ContextUpgradeable  {
+contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, ERC2771ContextUpgradeable {
 
     DeMaskedToken public dmtToken;
+    address private _trustedForwarder;
 
     struct User {
         string username;
@@ -97,11 +99,17 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     event FriendRemoved(address indexed user, address indexed friend);
     event MessageSent(address indexed sender, address indexed receiver, string content);
 
-    function initialize(address _dmtToken, address _forwarder, address initialOwner) public initializer {
+
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _dmtToken, address forwarder,address initialOwner) public initializer {
         __Ownable_init(initialOwner);
         __ReentrancyGuard_init();
-        __ERC2771Context_init_(_forwarder);
+
         dmtToken = DeMaskedToken(_dmtToken);
+        _trustedForwarder = forwarder;
         DOMAIN_SEPARATOR = keccak256(abi.encode(
             EIP712_DOMAIN_TYPEHASH,
             keccak256(bytes("DeMasked")),
@@ -178,7 +186,7 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
 
         address[] storage requests = users[receiver].pendingFriendRequests;
         for(uint256 i=0; i<requests.length; i++) {
-            if(requests[i] == sender) {
+            if(requests[i] == _sender) {
                 requests[i] = requests[requests.length - 1];
                 requests.pop();
                 break;
@@ -207,7 +215,7 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         require(_verifySignature(digest, _signature, sender), "Invalid signature");
 
         dmtToken.transferFrom(sender, address(this), POST_COST);
-        dmtToken.trasferFrom(sender, owner(), GAS_FEE);
+        dmtToken.transferFrom(sender, owner(), GAS_FEE);
         postCounter++;
         posts[postCounter] = Post({
             author:sender,
@@ -258,7 +266,7 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         isFriend[_friend][sender] = false;
 
         address[] storage senderFriends = users[sender].friends;
-        for(uint256 i=0; i<senderFriends; i++) {
+        for(uint256 i=0; i<senderFriends.length; i++) {
             if(senderFriends[i] == _friend){
                 senderFriends[i] = senderFriends[senderFriends.length - 1];
                 senderFriends.pop();
@@ -282,20 +290,23 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         address[] memory matches = new address[](registeredUsers.length);
         uint256 count = 0;
         address addr;
-        try this.parseAddress(_query) returns (address parseAddr) {
-            addr = pasrseAddr;
+
+        try this.parseAddress(_query) returns (address tempAddr) {
+            addr = tempAddr;
             if(users[addr].isRegistered) {
                 matches[count] = addr;
-                count++
+                count++;
             }
         } catch {
-            for(uint256 i=0; i<registeredUsers.length; i++) {
+            // Search by username
+            for(uint256 i = 0; i < registeredUsers.length; i++) {
                 if(keccak256(abi.encodePacked(users[registeredUsers[i]].username)) == keccak256(abi.encodePacked(_query))) {
                     matches[count] = registeredUsers[i];
-                    count++
+                    count++;
                 }
             }
         }
+
         address[] memory result = new address[](count);
         for(uint256 i=0; i<count; i++) {
             result[i] = matches[i];
@@ -305,12 +316,39 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
 
     //  ------------------------ HELPER FUNCTIONS -----------------------------
 
-    function parseAddress(string memory _addr) public pure returns(address) {
-        return address(bytes20(bytes(_addr)));
+    function _contextSuffixLength()
+    internal
+    view
+    override(ContextUpgradeable, ERC2771ContextUpgradeable)
+    returns (uint256)
+{
+    return ERC2771ContextUpgradeable._contextSuffixLength();
+}
+
+function parseAddress(string memory _addr) public pure returns(address) {
+        bytes memory addrBytes = bytes(_addr);
+        require(addrBytes.length == 42, "Invalid address length"); // 0x + 40 hex chars
+        require(addrBytes[0] == '0' && (addrBytes[1] == 'x' || addrBytes[1] == 'X'), "Invalid address format");
+        
+        uint160 result = 0;
+        for(uint i = 2; i < 42; i++) {
+            result *= 16;
+            uint8 b = uint8(addrBytes[i]);
+            if(b >= 48 && b <= 57) { // 0-9
+                result += b - 48;
+            } else if(b >= 65 && b <= 70) { // A-F
+                result += b - 55;
+            } else if(b >= 97 && b <= 102) { // a-f
+                result += b - 87;
+            } else {
+                revert("Invalid hex character");
+            }
+        }
+        return address(result);
     }
 
     function getUser(address _user) external view returns(User memory) {
-        returns users[_user];
+        return users[_user];
     }
 
     function getPost(uint256 _postId) external view returns (Post memory) {
@@ -321,12 +359,12 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         return messages[_sender][_receiver];
     }
 
-    function _msgSender() internal view override(ERC2771ContextUpgradeable) returns(address){
-        return super._msgSender();
+    function _msgSender() internal view override(ContextUpgradeable,ERC2771ContextUpgradeable) returns(address){
+        return ERC2771ContextUpgradeable._msgSender();
     }
 
-    function _msgData() internal view override(ERC2771ContextUpgradeable) returns(bytes calldata) {
-        return super._msgData();
+    function _msgData() internal view override(ContextUpgradeable,ERC2771ContextUpgradeable) returns(bytes calldata) {
+        return ERC2771ContextUpgradeable._msgData();
     }
 
     function withdrawDMT() external onlyOwner {
@@ -349,9 +387,26 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
     takes digest and v,r,s and returns the ethereum address that signed the message
     */
 
+    // function _verifySignature(bytes32 digest, bytes memory signature, address signer) private pure returns (bool) {
+    //     address recovered = ecrecover(digest, uint8(signature[64]), bytes32(signature[0:32]), bytes32(signature[32:64]));
+    //     return recovered == signer;
+    // }
+
+
     function _verifySignature(bytes32 digest, bytes memory signature, address signer) private pure returns (bool) {
-        address recovered = ecrecover(digest, uint8(signature[64]), bytes32(signature[0:32]), bytes32(signature[32:64]));
-        return recovered == signer;
+    require(signature.length == 65, "Invalid signature length");
+
+    bytes32 r;
+    bytes32 s;
+    uint8 v;
+
+    assembly {
+        r := mload(add(signature, 32))
+        s := mload(add(signature, 64))
+        v := byte(0, mload(add(signature, 96)))
     }
+
+    return ecrecover(digest, v, r, s) == signer;
+}
 
 }

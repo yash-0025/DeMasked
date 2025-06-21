@@ -7,7 +7,7 @@ pragma solidity ^0.8.20;
 Components
 
 1. User sign the transaction but didn't pay any gas
-2. Relayer :: It is alwarder . It pays gas fees and sbumits the transaction to the blockchain.so known as For
+2. Relayer :: It is also known as Forwarder . It pays gas fees and sbumits the transaction to the blockchain.
 3. Recipient Contract :: The smart contract that processes the transaction
 */
 
@@ -22,6 +22,8 @@ Flow of transaction
 
 import "@openzeppelin/contracts-upgradeable/metatx/ERC2771ForwarderUpgradeable.sol";
 
-contract MinimalForwarder is ERC2771Forwarder {
-    constructor() ERC2771Forwarder("MinimalForwarder") {}
+contract MinimalForwarder is ERC2771ForwarderUpgradeable {
+    function initialize() public initializer {
+        __ERC2771Forwarder_init("MinimalForwarder");
+    }
 }
