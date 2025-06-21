@@ -303,6 +303,36 @@ contract DeMasked is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeab
         return result;
     }
 
+    //  ------------------------ HELPER FUNCTIONS -----------------------------
+
+    function parseAddress(string memory _addr) public pure returns(address) {
+        return address(bytes20(bytes(_addr)));
+    }
+
+    function getUser(address _user) external view returns(User memory) {
+        returns users[_user];
+    }
+
+    function getPost(uint256 _postId) external view returns (Post memory) {
+        return posts[_postId];
+    }
+
+    function getMessages(address _sender, address _receiver) external view returns(Message[] memory) {
+        return messages[_sender][_receiver];
+    }
+
+    function _msgSender() internal view override(ERC2771ContextUpgradeable) returns(address){
+        return super._msgSender();
+    }
+
+    function _msgData() internal view override(ERC2771ContextUpgradeable) returns(bytes calldata) {
+        return super._msgData();
+    }
+
+    function withdrawDMT() external onlyOwner {
+        uint256 balance = dmtToken.balanceOf(address(this));
+        dmtToken.transfer(owner(), balance);
+    }
     /* 
     digest :: EIP712 hashed message 
     signature :: user's cryptographic signature (65-byte bytes)
